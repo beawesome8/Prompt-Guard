@@ -268,6 +268,10 @@ def main():
     print(f"\nPromptGuard run ID: {run_id}")
     print(f"Test cases loaded : {len(cases)}")
 
+    # Write run_id to file for reliable CI capture
+    with open("run_id.txt", "w") as f:
+        f.write(run_id)
+    
     conn = sqlite3.connect(DB_PATH)
 
     baseline_results = run_prompt_against_set(
