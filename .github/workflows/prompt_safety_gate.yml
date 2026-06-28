@@ -1,0 +1,84 @@
+name: PromptGuard Safety Gate
+
+on:
+  pull_request:
+    paths:
+      - 'prompts/**'
+      - 'evals/**'
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install anthropic==0.40.0 pydantic==2.10.6 pyyaml==6.0.2 python-dotenv==1.0.1
+
+      - name: Initialise database
+        run: python storage/init_db.py
+
+      - name: Run regression eval
+        id: eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python runner/eval_runner.py \
+            --baseline prompts/crm_summary_v1.yaml \
+            --candidate prompts/crm_summary_v2.yaml \
+            --test-set evals/golden_set.jsonl \
+            --ci-mode 2>&1 | tee eval_output.txt
+          echo "RUN_ID=$(grep 'PromptGuard run ID' eval_output.txt | awk '{print $NF}')" >> $GITHUB_ENV
+
+      - name: Generate reports
+        if: always()
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python runner/report_generator.py --run-id ${{ env.RUN_ID }}
+
+      - name: Post PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const runId = process.env.RUN_ID;
+            const mdPath = `storage/artifacts/report_${runId}.md`;
+            if (fs.existsSync(mdPath)) {
+              const body = fs.readFileSync(mdPath, 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Upload HTML report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptguard-report-${{ env.RUN_ID }}
+          path: storage/artifacts/report_${{ env.RUN_ID }}.html
+
+      - name: Enforce gate decision
+        run: |
+          if grep -q "Decision: BLOCKED" eval_output.txt; then
+            echo "Gate decision: BLOCKED — merge prevented"
+            exit 1
+          elif grep -q "Decision: WARNING" eval_output.txt; then
+            echo "Gate decision: WARNING — review recommended"
+            exit 0
+          else
+            echo "Gate decision: PASSED"
+            exit 0
+          fi

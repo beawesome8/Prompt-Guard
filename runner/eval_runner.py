@@ -167,12 +167,14 @@ def save_result(conn: sqlite3.Connection, run_id: str, prompt_version: str,
 
 
 def run_prompt_against_set(prompt_config: dict, cases: list, run_id: str,
-                            run_type: str, conn: sqlite3.Connection) -> list:
+                            run_type: str, conn: sqlite3.Connection,
+                            quiet: bool = False) -> list:
     """Runs a single prompt against all test cases and saves results."""
     version = prompt_config.get("version", "unknown")
     results = []
 
-    print(f"\n  Running {run_type} (v{version}) against {len(cases)} cases...")
+    if not quiet:
+        print(f"\n  Running {run_type} (v{version}) against {len(cases)} cases...")
 
     for i, case in enumerate(cases):
         api_result = call_claude(prompt_config, case["input"])
@@ -180,11 +182,12 @@ def run_prompt_against_set(prompt_config: dict, cases: list, run_id: str,
         save_result(conn, run_id, version, run_type, case["id"], api_result, score)
         results.append(score)
 
-        status = "PASS" if score["schema_valid"] else "FAIL"
-        print(f"  [{i+1:02d}/30] {case['id']} — schema:{status} "
-              f"sentiment:{'OK' if score['sentiment_correct'] else 'MISS'} "
-              f"urgency:{'OK' if score['urgency_correct'] else 'MISS'} "
-              f"({api_result['latency_ms']}ms)")
+        if not quiet:
+            status = "PASS" if score["schema_valid"] else "FAIL"
+            print(f"  [{i+1:02d}/30] {case['id']} — schema:{status} "
+                  f"sentiment:{'OK' if score['sentiment_correct'] else 'MISS'} "
+                  f"urgency:{'OK' if score['urgency_correct'] else 'MISS'} "
+                  f"({api_result['latency_ms']}ms)")
 
     conn.commit()
     return results
@@ -252,6 +255,7 @@ def main():
     parser.add_argument("--baseline", required=True, help="Path to baseline prompt YAML")
     parser.add_argument("--candidate", required=True, help="Path to candidate prompt YAML")
     parser.add_argument("--test-set", required=True, help="Path to golden set JSONL")
+    parser.add_argument("--ci-mode", action="store_true", help="Suppress per-case output for CI logs")
     args = parser.parse_args()
 
     init_db()
@@ -267,10 +271,10 @@ def main():
     conn = sqlite3.connect(DB_PATH)
 
     baseline_results = run_prompt_against_set(
-        baseline_config, cases, run_id, "baseline", conn
+        baseline_config, cases, run_id, "baseline", conn, quiet=args.ci_mode
     )
     candidate_results = run_prompt_against_set(
-        candidate_config, cases, run_id, "candidate", conn
+        candidate_config, cases, run_id, "candidate", conn, quiet=args.ci_mode
     )
 
     conn.close()
@@ -287,3 +291,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
