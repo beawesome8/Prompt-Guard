@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+.env
+storage/runs.db
+storage/artifacts/
+node_modules/
+dist/
+*.env

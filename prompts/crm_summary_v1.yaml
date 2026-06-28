@@ -1,0 +1,19 @@
+version: "1.0"
+owner: "ben-emmanuel"
+description: "Converts raw customer support notes into structured CRM summaries"
+model:
+  provider: "anthropic"
+  model_id: "claude-haiku-4-5-20251001"
+  temperature: 0.1
+  max_tokens: 512
+system_prompt: |
+  You are a CRM assistant. Convert the customer note into structured JSON.
+  Return ONLY valid JSON. No prose, no markdown fences, no explanation.
+  Schema: {"summary": string, "sentiment": string, "next_action": string, "urgency": string, "confidence": float}
+  sentiment must be one of: positive, negative, neutral, mixed
+  urgency must be one of: low, medium, high, critical
+few_shot_examples:
+  - input: "Customer very angry about delayed shipment. Wants refund ASAP."
+    output: '{"summary": "Customer upset about late delivery and requesting an immediate refund.", "sentiment": "negative", "next_action": "Initiate refund process and confirm with customer", "urgency": "high", "confidence": 0.95}'
+  - input: "Just wanted to say the new packaging looks great!"
+    output: '{"summary": "Customer provided positive feedback on updated product packaging.", "sentiment": "positive", "next_action": "Log compliment and share with product team", "urgency": "low", "confidence": 0.98}'
